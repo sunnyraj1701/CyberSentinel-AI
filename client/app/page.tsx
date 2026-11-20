@@ -1,6 +1,6 @@
 "use client";
-
-import { useState } from "react";
+import StatCard from "./components/StatCard";
+import { useEffect, useState } from "react";
 import {
   Shield,
   LayoutDashboard,
@@ -24,78 +24,116 @@ type Alert = {
   threat: string;
   source: string;
   severity: Severity;
-  time: string;
+  occurredAt: string;
+  status: "Open" | "Investigating" | "Resolved";
+  blocked: boolean;
+  description: string;
 };
 
 /* =========================
    DEMO DATA
 ========================= */
 
-const alerts: Alert[] = [
+const mockNow = Date.now();
+
+const mockAlerts: Alert[] = [
   {
     id: "ALT-2048",
     threat: "Multiple failed login attempts",
     source: "192.168.1.105",
     severity: "Critical",
-    time: "2 min ago",
+    occurredAt: new Date(mockNow - 2 * 60_000).toISOString(),
+    status: "Open",
+    blocked: false,
+    description:
+      "A burst of failed sign-in attempts was detected against an administrative account.",
   },
   {
     id: "ALT-2047",
     threat: "Suspicious network activity",
     source: "10.0.0.24",
     severity: "High",
-    time: "8 min ago",
+    occurredAt: new Date(mockNow - 8 * 60_000).toISOString(),
+    status: "Investigating",
+    blocked: false,
+    description:
+      "Outbound connections to an unusual destination were flagged for analyst review.",
   },
   {
     id: "ALT-2046",
     threat: "Unusual outbound traffic",
     source: "172.16.0.18",
     severity: "Medium",
-    time: "15 min ago",
+    occurredAt: new Date(mockNow - 15 * 60_000).toISOString(),
+    status: "Open",
+    blocked: false,
+    description:
+      "Traffic volume from this host exceeded its normal baseline.",
   },
   {
     id: "ALT-2045",
     threat: "Repeated access attempt",
     source: "192.168.1.44",
     severity: "Low",
-    time: "32 min ago",
-  },
-];
-
-const stats = [
-  {
-    label: "Events monitored",
-    value: "24,891",
-    change: "+12.8%",
-    icon: "◈",
+    occurredAt: new Date(mockNow - 32 * 60_000).toISOString(),
+    status: "Resolved",
+    blocked: true,
+    description:
+      "Repeated access to a restricted endpoint was denied and the event was contained.",
   },
   {
-    label: "Active threats",
-    value: "18",
-    change: "+3 today",
-    icon: "⚠",
+    id: "ALT-2044",
+    threat: "Malware signature detected",
+    source: "10.0.0.61",
+    severity: "Critical",
+    occurredAt: new Date(mockNow - 3 * 60 * 60_000).toISOString(),
+    status: "Investigating",
+    blocked: false,
+    description:
+      "An endpoint scan matched a known malware signature. The device is being investigated.",
   },
   {
-    label: "Threats blocked",
-    value: "1,284",
-    change: "+8.2%",
-    icon: "⬡",
+    id: "ALT-2043",
+    threat: "Potential data exfiltration",
+    source: "172.16.0.52",
+    severity: "High",
+    occurredAt: new Date(mockNow - 9 * 60 * 60_000).toISOString(),
+    status: "Open",
+    blocked: false,
+    description:
+      "A large data transfer to an external host was detected outside normal business hours.",
   },
   {
-    label: "Security score",
-    value: "94/100",
-    change: "Excellent",
-    icon: "◉",
+    id: "ALT-2042",
+    threat: "Unrecognized device on network",
+    source: "192.168.1.209",
+    severity: "Medium",
+    occurredAt: new Date(mockNow - 2 * 24 * 60 * 60_000).toISOString(),
+    status: "Resolved",
+    blocked: true,
+    description:
+      "A device not previously seen on the network was isolated pending verification.",
+  },
+  {
+    id: "ALT-2041",
+    threat: "Outdated endpoint protection",
+    source: "10.0.0.88",
+    severity: "Low",
+    occurredAt: new Date(mockNow - 5 * 24 * 60 * 60_000).toISOString(),
+    status: "Resolved",
+    blocked: false,
+    description:
+      "Endpoint protection definitions are out of date and need to be refreshed.",
   },
 ];
 
 const activityData = [35, 55, 40, 75, 45, 90, 60, 38, 68, 50, 82, 42];
 
-const severityData = [
-  { label: "Critical", count: 4, width: "20%", color: "bg-red-500" },
-  { label: "High", count: 7, width: "45%", color: "bg-orange-500" },
-  { label: "Medium", count: 5, width: "35%", color: "bg-yellow-500" },
-  { label: "Low", count: 2, width: "15%", color: "bg-blue-500" },
+const severityOptions: { label: Severity; color: string }[] = [
+  { label: "Critical", color: "bg-red-500" },
+  { label: "High", color: "bg-orange-500" },
+  { label: "Medium", color: "bg-yellow-500" },
+  { label: "Low", color: "bg-blue-500" },
 ];
 
 /* =========================
@@ -141,34 +179,25 @@ function severityStyle(severity: Severity) {
   }
 }
 
+function formatTime(occurredAt: string) {
+  const minutesAgo = Math.max(
+    0,
+    Math.floor(    (mockNow - new Date(occurredAt).getTime()) / 60_000)
+  );
+
+  if (minutesAgo < 1) return "Just now";
+  if (minutesAgo < 60) return `${minutesAgo} min ago`;
+
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  if (hoursAgo < 24) return `${hoursAgo} hr ago`;
+
+  const daysAgo = Math.floor(hoursAgo / 24);
+  return `${daysAgo} day${daysAgo === 1 ? "" : "s"} ago`;
+}
+
 /* =========================
    REUSABLE COMPONENTS
 ========================= */
-
-function StatCard({
-  label,
-  value,
-  change,
-  icon,
-}: {
-  label: string;
-  value: string;
-  change: string;
-  icon: string;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-[#101827] p-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-400">{label}</p>
-        <span className="text-cyan-400">{icon}</span>
-      </div>
-
-      <h3 className="mt-4 text-2xl font-semibold">{value}</h3>
-
-      <p className="mt-2 text-xs text-cyan-400">{change}</p>
-    </div>
-  );
-}
 
 function SeverityBadge({ severity }: { severity: Severity }) {
   return (
@@ -182,51 +211,236 @@ function SeverityBadge({ severity }: { severity: Severity }) {
   );
 }
 
-function AlertTable({ data }: { data: Alert[] }) {
+function StatusBadge({ status }: { status: Alert["status"] }) {
+  const style =
+    status === "Open"
+      ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+      : status === "Investigating"
+        ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
+        : "bg-green-500/10 text-green-400 border-green-500/20";
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm text-left">
-        <thead className="bg-white/[0.02] text-gray-500">
-          <tr>
-            <th className="px-5 py-4 font-medium">Alert ID</th>
-            <th className="px-5 py-4 font-medium">Threat</th>
-            <th className="px-5 py-4 font-medium">Source IP</th>
-            <th className="px-5 py-4 font-medium">Severity</th>
-            <th className="px-5 py-4 font-medium">Time</th>
-          </tr>
-        </thead>
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${style}`}>
+      {status}
+    </span>
+  );
+}
 
-        <tbody>
-          {data.map((alert) => (
-            <tr
-              key={alert.id}
-              className="border-t border-white/5 transition hover:bg-white/[0.02]"
+type AlertTableProps = {
+  data: Alert[];
+  selectedSeverities: Severity[];
+  onToggleSeverity: (severity: Severity) => void;
+  dateRange: string;
+  onDateRangeChange: (range: string) => void;
+  statusFilter: string;
+  onStatusFilterChange: (status: string) => void;
+  onSelectAlert: (alert: Alert) => void;
+};
+
+function AlertTable({
+  data,
+  selectedSeverities,
+  onToggleSeverity,
+  dateRange,
+  onDateRangeChange,
+  statusFilter,
+  onStatusFilterChange,
+  onSelectAlert,
+}: AlertTableProps) {
+  return (
+    <>
+      <div className="flex flex-col gap-4 border-b border-white/5 p-5">
+        <div className="flex flex-wrap gap-2">
+          {severityOptions.map(({ label }) => {
+            const isSelected = selectedSeverities.includes(label);
+
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => onToggleSeverity(label)}
+                className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                  isSelected
+                    ? severityStyle(label)
+                    : "border-white/10 text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            Date
+            <select
+              value={dateRange}
+              onChange={(event) => onDateRangeChange(event.target.value)}
+              className="rounded-lg border border-white/10 bg-[#111827] px-3 py-2 text-sm text-gray-300 outline-none focus:border-cyan-500/50"
             >
-              <td className="px-5 py-4 text-gray-500">{alert.id}</td>
+              <option value="all">All time</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+          </label>
 
-              <td className="px-5 py-4 text-gray-200">{alert.threat}</td>
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) => onStatusFilterChange(event.target.value)}
+              className="rounded-lg border border-white/10 bg-[#111827] px-3 py-2 text-sm text-gray-300 outline-none focus:border-cyan-500/50"
+            >
+              <option value="All">All statuses</option>
+              <option value="Open">Open</option>
+              <option value="Investigating">Investigating</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </label>
+        </div>
+      </div>
 
-              <td className="px-5 py-4 font-mono text-gray-400">
-                {alert.source}
-              </td>
-
-              <td className="px-5 py-4">
-                <SeverityBadge severity={alert.severity} />
-              </td>
-
-              <td className="px-5 py-4 text-gray-500">{alert.time}</td>
-            </tr>
-          ))}
-
-          {data.length === 0 && (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-white/[0.02] text-gray-500">
             <tr>
-              <td colSpan={5} className="px-5 py-10 text-center text-gray-500">
-                No alerts found.
-              </td>
+              <th className="px-5 py-4 font-medium">Alert ID</th>
+              <th className="px-5 py-4 font-medium">Threat</th>
+              <th className="px-5 py-4 font-medium">Source IP</th>
+              <th className="px-5 py-4 font-medium">Severity</th>
+              <th className="px-5 py-4 font-medium">Status</th>
+              <th className="px-5 py-4 font-medium">Time</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {data.map((alert) => (
+              <tr
+                key={alert.id}
+                tabIndex={0}
+                aria-label={`View details for ${alert.threat}`}
+                onClick={() => onSelectAlert(alert)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectAlert(alert);
+                  }
+                }}
+                className="cursor-pointer border-t border-white/5 transition hover:bg-white/[0.02] focus:bg-white/[0.04] focus:outline-none"
+              >
+                <td className="px-5 py-4 text-gray-500">{alert.id}</td>
+                <td className="px-5 py-4 text-gray-200">{alert.threat}</td>
+                <td className="px-5 py-4 font-mono text-gray-400">
+                  {alert.source}
+                </td>
+                <td className="px-5 py-4">
+                  <SeverityBadge severity={alert.severity} />
+                </td>
+                <td className="px-5 py-4">
+                  <StatusBadge status={alert.status} />
+                </td>
+                <td className="px-5 py-4 text-gray-500">
+                  {formatTime(alert.occurredAt)}
+                </td>
+              </tr>
+            ))}
+
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-5 py-10 text-center text-gray-500">
+                  No alerts found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function AlertDetailsDialog({
+  alert,
+  onClose,
+}: {
+  alert: Alert | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!alert) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [alert, onClose]);
+
+  if (!alert) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="alert-details-title"
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-lg rounded-xl border border-white/10 bg-[#101827] p-6 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-gray-500">{alert.id}</p>
+            <h2 id="alert-details-title" className="mt-1 text-xl font-semibold">
+              {alert.threat}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close alert details"
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-white/5 hover:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <SeverityBadge severity={alert.severity} />
+          <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-gray-300">
+            {alert.status}
+          </span>
+        </div>
+
+        <p className="mt-5 text-sm leading-6 text-gray-300">
+          {alert.description}
+        </p>
+
+        <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-white/10 pt-5 text-sm">
+          <div>
+            <dt className="text-gray-500">Source IP</dt>
+            <dd className="mt-1 font-mono text-gray-200">{alert.source}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Detected</dt>
+            <dd className="mt-1 text-gray-200">
+              {new Date(alert.occurredAt).toLocaleString()}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Response</dt>
+            <dd className="mt-1 text-gray-200">
+              {alert.blocked ? "Blocked" : "No automated action"}
+            </dd>
+          </div>
+        </dl>
+      </section>
     </div>
   );
 }
@@ -235,7 +449,19 @@ function AlertTable({ data }: { data: Alert[] }) {
    DASHBOARD PAGE
 ========================= */
 
-function DashboardContent({ filteredAlerts }: { filteredAlerts: Alert[] }) {
+type AlertTableControls = Omit<AlertTableProps, "data">;
+
+function DashboardContent({
+  filteredAlerts,
+  tableControls,
+  stats,
+  severityData,
+}: {
+  filteredAlerts: Alert[];
+  tableControls: AlertTableControls;
+  stats: { label: string; value: string; change: string; icon: string }[];
+  severityData: { label: Severity; count: number; width: string; color: string }[];
+}) {
   return (
     <>
       {/* Statistics */}
@@ -319,7 +545,7 @@ function DashboardContent({ filteredAlerts }: { filteredAlerts: Alert[] }) {
           </p>
         </div>
 
-        <AlertTable data={filteredAlerts} />
+        <AlertTable data={filteredAlerts} {...tableControls} />
       </div>
     </>
   );
@@ -329,7 +555,13 @@ function DashboardContent({ filteredAlerts }: { filteredAlerts: Alert[] }) {
    OTHER PAGES
 ========================= */
 
-function ThreatDetectionContent({ filteredAlerts }: { filteredAlerts: Alert[] }) {
+function ThreatDetectionContent({
+  filteredAlerts,
+  tableControls,
+}: {
+  filteredAlerts: Alert[];
+  tableControls: AlertTableControls;
+}) {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
@@ -349,21 +581,25 @@ function ThreatDetectionContent({ filteredAlerts }: { filteredAlerts: Alert[] })
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Critical threats"
-          value="4"
+          value={String(
+            filteredAlerts.filter((alert) => alert.severity === "Critical").length
+          )}
           change="Immediate attention"
           icon="⚠"
         />
 
         <StatCard
           label="High-risk threats"
-          value="7"
+          value={String(
+            filteredAlerts.filter((alert) => alert.severity === "High").length
+          )}
           change="Investigation recommended"
           icon="◈"
         />
 
         <StatCard
           label="Threats detected"
-          value="18"
+          value={String(filteredAlerts.length)}
           change="Today"
           icon="⬡"
         />
@@ -377,13 +613,19 @@ function ThreatDetectionContent({ filteredAlerts }: { filteredAlerts: Alert[] })
           </p>
         </div>
 
-        <AlertTable data={filteredAlerts} />
+        <AlertTable data={filteredAlerts} {...tableControls} />
       </div>
     </div>
   );
 }
 
-function SecurityEventsContent({ filteredAlerts }: { filteredAlerts: Alert[] }) {
+function SecurityEventsContent({
+  filteredAlerts,
+  tableControls,
+}: {
+  filteredAlerts: Alert[];
+  tableControls: AlertTableControls;
+}) {
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101827]">
       <div className="border-b border-white/10 p-5">
@@ -394,12 +636,16 @@ function SecurityEventsContent({ filteredAlerts }: { filteredAlerts: Alert[] }) 
         </p>
       </div>
 
-      <AlertTable data={filteredAlerts} />
+      <AlertTable data={filteredAlerts} {...tableControls} />
     </div>
   );
 }
 
-function AnalyticsContent() {
+function AnalyticsContent({
+  stats,
+}: {
+  stats: { label: string; value: string; change: string; icon: string }[];
+}) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -449,34 +695,144 @@ export default function Home() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedSeverities, setSelectedSeverities] = useState<Severity[]>(
+    severityOptions.map(({ label }) => label)
+  );
+  const [dateRange, setDateRange] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const rangeInDays =
+    dateRange === "24h" ? 1 : dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : null;
 
-  const filteredAlerts = alerts.filter((alert) => {
+  const filteredAlerts = mockAlerts.filter((alert) => {
     const query = searchQuery.toLowerCase();
-
-    return (
+    const matchesSearch =
       alert.threat.toLowerCase().includes(query) ||
       alert.source.toLowerCase().includes(query) ||
       alert.severity.toLowerCase().includes(query) ||
-      alert.id.toLowerCase().includes(query)
+      alert.status.toLowerCase().includes(query) ||
+      alert.id.toLowerCase().includes(query) ||
+      alert.description.toLowerCase().includes(query);
+    const isInDateRange =
+      rangeInDays === null ||
+      new Date(alert.occurredAt).getTime() >=
+        mockNow - rangeInDays * 24 * 60 * 60_000;
+
+    return (
+      matchesSearch &&
+      selectedSeverities.includes(alert.severity) &&
+      isInDateRange &&
+      (statusFilter === "All" || alert.status === statusFilter)
     );
   });
+
+  const activeThreats = filteredAlerts.filter(
+    (alert) => alert.status !== "Resolved"
+  );
+  const blockedThreats = filteredAlerts.filter((alert) => alert.blocked);
+  const severityPenalty = activeThreats.reduce((penalty, alert) => {
+    const severityWeight: Record<Severity, number> = {
+      Critical: 15,
+      High: 8,
+      Medium: 3,
+      Low: 1,
+    };
+    return penalty + severityWeight[alert.severity];
+  }, 0);
+  const securityScore = Math.max(0, 100 - severityPenalty);
+  const stats = [
+    {
+      label: "Events monitored",
+      value: filteredAlerts.length.toLocaleString(),
+      change: "Matching current filters",
+      icon: "◈",
+    },
+    {
+      label: "Active threats",
+      value: activeThreats.length.toLocaleString(),
+      change: "Open or investigating",
+      icon: "⚠",
+    },
+    {
+      label: "Threats blocked",
+      value: blockedThreats.length.toLocaleString(),
+      change: "Contained demo alerts",
+      icon: "⬡",
+    },
+    {
+      label: "Security score",
+      value: `${securityScore}/100`,
+      change: "Based on active severity",
+      icon: "◉",
+    },
+  ];
+  const severityData = severityOptions.map(({ label, color }) => {
+    const count = filteredAlerts.filter(
+      (alert) => alert.severity === label
+    ).length;
+    const width =
+      filteredAlerts.length === 0
+        ? "0%"
+        : `${(count / filteredAlerts.length) * 100}%`;
+    return { label, count, width, color };
+  });
+
+  const tableControls: AlertTableControls = {
+    selectedSeverities,
+    onToggleSeverity: (severity) => {
+      setSelectedSeverities((current) =>
+        current.includes(severity)
+          ? current.filter((item) => item !== severity)
+          : [...current, severity]
+      );
+    },
+    dateRange,
+    onDateRangeChange: setDateRange,
+    statusFilter,
+    onStatusFilterChange: setStatusFilter,
+    onSelectAlert: setSelectedAlert,
+  };
 
   function renderPage() {
     switch (activePage) {
       case "Dashboard":
-        return <DashboardContent filteredAlerts={filteredAlerts} />;
+        return (
+          <DashboardContent
+            filteredAlerts={filteredAlerts}
+            tableControls={tableControls}
+            stats={stats}
+            severityData={severityData}
+          />
+        );
 
       case "Threat Detection":
-        return <ThreatDetectionContent filteredAlerts={filteredAlerts} />;
+        return (
+          <ThreatDetectionContent
+            filteredAlerts={filteredAlerts}
+            tableControls={tableControls}
+          />
+        );
 
       case "Security Events":
-        return <SecurityEventsContent filteredAlerts={filteredAlerts} />;
+        return (
+          <SecurityEventsContent
+            filteredAlerts={filteredAlerts}
+            tableControls={tableControls}
+          />
+        );
 
       case "Analytics":
-        return <AnalyticsContent />;
+        return <AnalyticsContent stats={stats} />;
 
       default:
-        return <DashboardContent filteredAlerts={filteredAlerts} />;
+        return (
+          <DashboardContent
+            filteredAlerts={filteredAlerts}
+            tableControls={tableControls}
+            stats={stats}
+            severityData={severityData}
+          />
+        );
     }
   }
 
@@ -586,7 +942,7 @@ export default function Home() {
 
           {/* Search */}
           <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-xl border border-gray-800 bg-[#111827] px-3 py-2 md:flex">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-800 bg-[#111827] px-3 py-2 sm:flex-none">
               <Search size={16} className="text-gray-500" />
 
               <input
@@ -594,7 +950,7 @@ export default function Home() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search threats..."
-                className="w-40 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-gray-500 sm:w-40"
               />
             </div>
 
@@ -626,6 +982,10 @@ export default function Home() {
           CyberSentinel AI · Security monitoring platform · Demo data
         </p>
       </section>
+      <AlertDetailsDialog
+        alert={selectedAlert}
+        onClose={() => setSelectedAlert(null)}
+      />
     </main>
   );
 }
